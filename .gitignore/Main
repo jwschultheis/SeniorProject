@@ -1,0 +1,1045 @@
+#include "stm32f4xx_rcc.h"
+#include "stm32f4xx_gpio.h"
+#include "stm32f4xx_tim.h"
+#include "stm32f4xx.h"
+#include "misc.h"
+#include "stm32f4xx_dma.h"
+#include "stm32f4xx_adc.h"
+#include <stdio.h>
+#include "time.h"
+#include "stm32f4xx_i2c.h"
+#include "stm32f4xx_EXTI.h"
+#include "math.h"
+#include "stm32f4xx_SYSCFG.h"
+
+
+//i2c compass
+#define OUT_X_H                         0x03
+#define OUT_X_L                         0x04
+#define OUT_Y_H                         0x07
+#define OUT_Y_L                         0x08
+#define OUT_Z_H                         0x05
+#define OUT_Z_L                         0x06
+#define HMC5983_ADDRESS                 0x1E
+#define HMC5983_WRITE  			        0x3C
+#define HMC5983_READ  	         	    0x3D
+
+#define PI	3.14
+
+
+float Degree, Heading;
+
+
+
+char str[50];
+uint32_t i = 0;
+
+
+
+
+
+uint8_t i2cdata,a1,a2;
+uint8_t I2C_write(uint8_t devAddr, uint8_t regAddr, uint8_t val);
+uint8_t I2C_readreg(uint8_t devAddr, uint8_t regAddr);
+//end i2c compass
+
+
+GPIO_InitTypeDef GPIO_InitStruct;
+TIM_OCInitTypeDef TIM_OCStruct;
+TIM_TimeBaseInitTypeDef TIM_BaseStruct;
+
+/* Private function prototypes -----------------------------------------------*/
+
+void Motor_FWD();
+void Motor_REV();
+void Motor_STOP();
+void Motor_CCW();
+void Motor_CW();
+void Motor_LeftTurn();
+void Motor_RightTurn();
+void TIM3_PWMOutput();
+void TIM4_PWMOutput();
+void adc();
+void Speaker();
+void encodersInit();
+void encoderRightInit();
+void encoderLeftInit();
+void Speaker_Out();
+void sensor();
+
+
+
+/* -----------------------------------------------------------------------------*/
+
+float magX;
+float magY;
+float magZ;
+
+float AD_value0;
+float AD_value1;
+float AD_value2;
+float AD_value3;
+int circumfrance;
+circumfrance=4*3.1415926;
+int dtR=0;
+int dtL=0;
+int distL=0;
+int countLeft=0;
+int direction;
+uint16_t ADC3ConvertedValue[3] = {0,0,0};
+uint8_t I2C_write(uint8_t devAddr, uint8_t regAddr, uint8_t val);
+uint8_t I2C_readreg(uint8_t devAddr, uint8_t regAddr);
+
+int main(){
+
+
+
+//Speaker();
+encoderRightInit();
+encoderLeftInit();
+TIM3_PWMOutput();
+TIM4_PWMOutput();
+adc();
+//SystemInit();
+	//init_I2C2();
+	//sensor();
+	//i2c_NVIC();
+	//I2C2_EV_IRQHandler();
+
+
+while(1){
+
+//writes to registers for I2C
+float maxY=0;
+float magX=0;
+
+	//sensor();
+
+
+
+
+
+int countRight;
+int statusRight = TIM_GetCounter(TIM2);
+countRight=statusRight/1632;
+dtR=countRight*circumfrance/12;
+
+
+int statusLeft = TIM_GetCounter(TIM1);
+if((TIM_GetCounter(TIM1) > 1620)){
+	++countLeft;
+	statusLeft=0;
+
+}
+
+
+
+dtL =countLeft*circumfrance/12;
+
+
+
+
+
+
+ADC_SoftwareStartConv(ADC3);
+
+float AnalogVoltage0 = 0;
+float AnalogVoltage1 = 0;
+float AnalogVoltage2 = 0;
+float AnalogVoltage3 = 0;
+float distance0 = 0;
+float distance1 = 0;
+float distance2 = 0;
+float distance3 = 0;
+float feet0 = 0;
+float feet1 = 0;
+float feet2 = 0;
+float feet3 = 0;
+float cm = 2.54;
+
+
+
+
+
+
+
+
+//Conversion for Sonar1 PA0 Green LED
+
+		AD_value0 = ADC3ConvertedValue[0];
+
+		AnalogVoltage0 = (AD_value0 / 4095 )* 5;
+
+        distance0 = AnalogVoltage0 /0.0049;
+
+        feet0 = (distance0/2.54)/12;
+
+
+
+
+        //Conversion for Sonar2 PA1
+		AD_value1 = ADC3ConvertedValue[1];
+
+		AnalogVoltage1 = (AD_value1 / 4095 )* 5;
+
+		distance1 = AnalogVoltage1 /0.0049;
+
+		feet1 = (distance1/2.54)/12;
+
+
+
+
+		//Conversion for Sonar3 PA2 Red LED
+
+        AD_value2 = ADC3ConvertedValue[2];
+
+		AnalogVoltage2 = (AD_value2 / 4095 )* 5;
+
+	    distance2 = AnalogVoltage2 /0.0049;
+
+	    feet2 = (distance2/2.54)/12;
+
+
+
+
+
+
+		//Conversion for Sonar 4
+		AD_value3 = ADC3ConvertedValue[3];
+
+	   	AnalogVoltage3 = (AD_value3 / 4095 )* 5;
+
+	   	distance3 = AnalogVoltage3 /0.0049;
+
+	   	feet3 = (distance3/2.54)/12;
+
+
+
+
+if (feet0 > 1.5 | feet2 > 1.5){
+	Motor_FWD();
+}
+
+else if ((feet2 < 1.5) && (feet1 < 1)){
+	Motor_LeftTurn();
+}
+
+else if ((feet0 < 1.5) && (feet1 < 1)){
+	Motor_RightTurn();
+}
+else if (feet2 < 1.5){
+		Motor_LeftTurn();
+}
+
+else if (feet0 < 1.5){
+	Motor_RightTurn();
+}
+else{
+	Motor_STOP();
+}
+
+/*	   	I2C2_EV_IRQHandler();
+	   		a1 = I2C_readreg(HMC5983_READ,OUT_X_L);
+	   							a2 = I2C_readreg(HMC5983_READ,OUT_X_H);
+	   							magX =((a2<<8) | a1);
+	   						    //magX = magX * 0.00092; //Digital Resolution (G/LSb), Sensör Datasheet sayfa 16
+
+
+	   							a1 = I2C_readreg(HMC5983_READ,OUT_Y_L);
+	   							a2 = I2C_readreg(HMC5983_READ,OUT_Y_H);
+	   							magY=((a2<<8) | a1);
+	   							//magY = magY * 0.00092; //Digital Resolution (G/LSb), Sensör Datasheet sayfa 16
+
+	   							a1 = I2C_readreg(HMC5983_READ,OUT_Z_L);
+	   							a2 = I2C_readreg(HMC5983_READ,OUT_Z_H);
+	   							magZ =((a2<<8) | a1);
+	   							//magZ = magZ * 0.00092; //Digital Resolution (G/LSb), Sensör Datasheet sayfa 16
+
+
+
+
+	   							if (magX > 0x07FF) magX = 0xFFFF - magX;
+	   							if (magZ > 0x07FF) magZ = 0xFFFF - magZ;
+	   							if (magY > 0x07FF) magY = 0xFFFF - magY;
+
+	   							if (magY == 0 && magX > 0) Degree = 180.0;
+	   							if (magY == 0 && magX <= 0) Degree = 0.0;
+	   							if (magY > 0) Degree = 90 - atan2(magY,magX) * (180 / PI);
+	   							if (magY < 0) Degree = 270 - atan2(magY,magX) * 180 / PI;
+
+	   							printf(str,"Direction:%f **\n",Degree);
+
+	   							*/
+
+
+
+}
+
+		 }
+
+
+
+
+
+Motor_FWD(){
+
+	 TIM_SetCompare1(TIM3, 1500);//FL // @ 40% PWM
+
+	 TIM_SetCompare2(TIM3, 1500);//FR
+
+	 TIM_SetCompare3(TIM3, 1500);//BL
+
+	 TIM_SetCompare4(TIM3, 1500);//BR
+
+
+
+	 TIM_SetCompare1(TIM4, 0);
+
+	 TIM_SetCompare2(TIM4, 0);
+
+	 TIM_SetCompare3(TIM4, 0);
+
+	 TIM_SetCompare4(TIM4, 0);
+
+
+
+}
+
+
+
+
+Motor_RightTurn(){
+
+//FWD
+
+		 TIM_SetCompare1(TIM3, 3000); //FL PC6 Brown
+
+		 TIM_SetCompare2(TIM3, 1500); //FR PC7 RED
+
+		 TIM_SetCompare3(TIM3, 3000); //BL PC8 Orange
+
+		 TIM_SetCompare4(TIM3, 1500); //BR PC9 Yellow
+
+//REV
+
+		 TIM_SetCompare1(TIM4, 0);//FL PB6 Purple
+
+		 TIM_SetCompare2(TIM4, 0);//FR PB7 Grey
+
+		 TIM_SetCompare3(TIM4, 0);//BL PB8 White
+
+		 TIM_SetCompare4(TIM4, 0);//BR PB9 Black
+
+}
+
+
+
+Motor_LeftTurn(){
+
+//FWD
+
+		 TIM_SetCompare1(TIM3, 1500); //FL PC6 Brown
+
+		 TIM_SetCompare2(TIM3, 3000); //FR PC7 Black
+
+		 TIM_SetCompare3(TIM3, 1500); //BL PC8 Orange
+
+		 TIM_SetCompare4(TIM3, 3000); //BR PC9 Red
+
+//REV
+
+		 TIM_SetCompare1(TIM4, 0);//FL PB6 Grey
+
+		 TIM_SetCompare2(TIM4, 0);//FR PB7 Black
+
+		 TIM_SetCompare3(TIM4, 0);//BL PB8 Brown
+
+		 TIM_SetCompare4(TIM4, 0);//BR PB9 White
+
+}
+
+
+
+Motor_CCW(){
+
+//FWD
+
+		 TIM_SetCompare1(TIM3, 0); //FL PC6 Brown
+
+		 TIM_SetCompare2(TIM3, 2500); //FR PC7 Black
+
+		 TIM_SetCompare3(TIM3, 0); //BL PC8 Orange
+
+		 TIM_SetCompare4(TIM3, 2500); //BR PC9 Red
+
+//REV
+
+		 TIM_SetCompare1(TIM4, 2500);//FL PB6 Grey
+
+		 TIM_SetCompare2(TIM4, 0);//FR PB7 Black
+
+		 TIM_SetCompare3(TIM4, 2500);//BL PB8 Brown
+
+		 TIM_SetCompare4(TIM4, 0);//BR PB9 White
+
+}
+
+Motor_CW(){
+
+//FWD
+
+		 TIM_SetCompare1(TIM3, 3000); //FL PC6 Brown
+
+		 TIM_SetCompare2(TIM3, 0); //FR PC7 Black
+
+		 TIM_SetCompare3(TIM3, 3000); //BL PC8 Orange
+
+		 TIM_SetCompare4(TIM3, 0); //BR PC9 Red
+
+//REV
+
+		 TIM_SetCompare1(TIM4, 0);//FL PB6 Grey
+
+		 TIM_SetCompare2(TIM4, 3000);//FR PB7 Black
+
+		 TIM_SetCompare3(TIM4, 0);//BL PB8 Brown
+
+		 TIM_SetCompare4(TIM4, 3000);//BR PB9 White
+
+}
+
+Speaker_Out(){
+
+			TIM_SetCompare1(TIM12,1000);
+		}
+
+
+Motor_REV(){
+
+
+
+	 TIM_SetCompare1(TIM3, 0); //FL PC6
+
+	 TIM_SetCompare2(TIM3, 0); //FR PC7
+
+	 TIM_SetCompare3(TIM3, 0); //BL PC8
+
+	 TIM_SetCompare4(TIM3, 0); //BR PC9
+
+
+
+	 TIM_SetCompare1(TIM4, 3000); //FL PB6
+
+	 TIM_SetCompare2(TIM4, 3000); //FR PB7
+
+	 TIM_SetCompare3(TIM4, 3000); //BL PB8
+
+	 TIM_SetCompare4(TIM4, 3000); //BR PB9
+
+}
+
+
+
+Motor_STOP(){
+
+
+
+	     TIM_SetCompare1(TIM3, 0);
+
+		 TIM_SetCompare2(TIM3, 0);
+
+		 TIM_SetCompare3(TIM3, 0);
+
+		 TIM_SetCompare4(TIM3, 0);
+
+
+
+		 TIM_SetCompare1(TIM4, 0);
+
+		 TIM_SetCompare2(TIM4, 0);
+
+		 TIM_SetCompare3(TIM4, 0);
+
+		 TIM_SetCompare4(TIM4, 0);
+
+
+
+
+
+}
+
+
+TIM3_PWMOutput(){
+
+				RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
+
+				TIM_BaseStruct.TIM_Period = 3000;
+
+				TIM_BaseStruct.TIM_Prescaler = 0;
+
+				TIM_BaseStruct.TIM_ClockDivision = 0;
+
+				TIM_BaseStruct.TIM_CounterMode = TIM_CounterMode_Up;
+
+				TIM_TimeBaseInit(TIM3, &TIM_BaseStruct);
+
+
+
+			    TIM_Cmd(TIM3, ENABLE);
+
+
+
+			    TIM_OCStruct.TIM_OCMode = TIM_OCMode_PWM2;
+
+			    TIM_OCStruct.TIM_OutputState = TIM_OutputState_Enable;
+
+			    TIM_OCStruct.TIM_OCPolarity = TIM_OCPolarity_Low;
+
+
+
+			    TIM_OCStruct.TIM_Pulse = 3000; /* 25% duty cycle */
+
+			    TIM_OC1Init(TIM3, &TIM_OCStruct);
+
+			    TIM_OC1PreloadConfig(TIM3, TIM_OCPreload_Enable);
+
+
+
+
+
+			    TIM_OCStruct.TIM_Pulse = 3000; /* 25% duty cycle */
+
+			   	TIM_OC2Init(TIM3, &TIM_OCStruct);
+
+			   	TIM_OC2PreloadConfig(TIM3, TIM_OCPreload_Enable);
+
+
+
+			    TIM_OCStruct.TIM_Pulse = 3000; /* 25% duty cycle */
+
+			  	TIM_OC3Init(TIM3, &TIM_OCStruct);
+
+			  	TIM_OC3PreloadConfig(TIM3, TIM_OCPreload_Enable);
+
+
+
+
+
+			  	TIM_OCStruct.TIM_Pulse = 3000; /* 25% duty cycle */
+
+			  	TIM_OC4Init(TIM3, &TIM_OCStruct);
+
+			  	TIM_OC4PreloadConfig(TIM3, TIM_OCPreload_Enable);
+
+
+
+			  	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
+
+
+
+			  	GPIO_InitStruct.GPIO_Pin= GPIO_Pin_6 | GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9 ;
+
+				GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+
+				GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
+
+				GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
+
+				GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+
+				GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+
+
+				GPIO_PinAFConfig(GPIOC,GPIO_PinSource6,GPIO_AF_TIM3);
+
+				GPIO_PinAFConfig(GPIOC,GPIO_PinSource7,GPIO_AF_TIM3);
+
+				GPIO_PinAFConfig(GPIOC,GPIO_PinSource8,GPIO_AF_TIM3);
+
+				GPIO_PinAFConfig(GPIOC,GPIO_PinSource9,GPIO_AF_TIM3);
+
+
+
+
+
+		}
+
+
+
+
+
+
+TIM4_PWMOutput(){
+
+				//TIM4 REV
+
+
+
+								RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
+
+								TIM_BaseStruct.TIM_Period = 3500;
+
+								TIM_BaseStruct.TIM_Prescaler = 0;
+
+								TIM_BaseStruct.TIM_ClockDivision = 0;
+
+								TIM_BaseStruct.TIM_CounterMode = TIM_CounterMode_Up;
+
+								TIM_TimeBaseInit(TIM4, &TIM_BaseStruct);
+
+							     //Start count on TIM4
+
+							    TIM_Cmd(TIM4, ENABLE);
+
+
+
+							    TIM_OCStruct.TIM_OCMode = TIM_OCMode_PWM1;
+
+							    TIM_OCStruct.TIM_OutputState = TIM_OutputState_Enable;
+
+							    TIM_OCStruct.TIM_OCPolarity = TIM_OCPolarity_High;
+
+
+
+							    TIM_OCStruct.TIM_Pulse = 3000;  //25% duty cycle
+
+							   	TIM_OC1Init(TIM4, &TIM_OCStruct);
+
+							   	TIM_OC1PreloadConfig(TIM4, TIM_OCPreload_Enable);
+
+
+
+							    TIM_OCStruct.TIM_Pulse = 3000;  //25% duty cycle
+
+							    TIM_OC2Init(TIM4, &TIM_OCStruct);
+
+							    TIM_OC2PreloadConfig(TIM4, TIM_OCPreload_Enable);
+
+
+
+							    TIM_OCStruct.TIM_Pulse = 3000;  //25% duty cycle
+
+								TIM_OC3Init(TIM4, &TIM_OCStruct);
+
+								TIM_OC3PreloadConfig(TIM4, TIM_OCPreload_Enable);
+
+
+
+								 TIM_OCStruct.TIM_Pulse = 3000;  //25% duty cycle
+
+								 TIM_OC4Init(TIM4, &TIM_OCStruct);
+
+								 TIM_OC4PreloadConfig(TIM4, TIM_OCPreload_Enable);
+
+
+
+
+
+							  	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
+
+
+
+								GPIO_InitStruct.GPIO_Pin= GPIO_Pin_6 | GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9;
+
+								GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+
+								GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
+
+								GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
+
+								GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+
+								GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+
+
+								GPIO_PinAFConfig(GPIOB,GPIO_PinSource6,GPIO_AF_TIM4);
+
+								GPIO_PinAFConfig(GPIOB,GPIO_PinSource7,GPIO_AF_TIM4);
+
+								GPIO_PinAFConfig(GPIOB,GPIO_PinSource8,GPIO_AF_TIM4);
+
+								GPIO_PinAFConfig(GPIOB,GPIO_PinSource9,GPIO_AF_TIM4);
+
+
+
+
+
+}
+
+
+
+/*void i2c_NVIC(){
+
+NVIC_InitTypeDef NVIC_InitStructure;
+
+NVIC_InitStructure.NVIC_IRQChannel = I2C2_EV_IRQn;
+NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+NVIC_Init(&NVIC_InitStructure);
+}
+
+void init_I2C2()
+{
+	I2C_ITConfig(I2C2, I2C_IT_BUF| I2C_IT_EVT, ENABLE);
+	GPIO_InitTypeDef GPIO_InitStruct;
+	I2C_InitTypeDef I2C_InitStruct;
+
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C2, ENABLE);
+
+	RCC_APB1PeriphResetCmd(RCC_APB1Periph_I2C2, ENABLE);
+	RCC_APB1PeriphResetCmd(RCC_APB1Periph_I2C2, DISABLE);
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
+
+	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_11;
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
+	GPIO_InitStruct.GPIO_OType = GPIO_OType_OD;
+	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	GPIO_PinAFConfig(GPIOB, GPIO_PinSource10, GPIO_AF_I2C2);	// SCL pini
+	GPIO_PinAFConfig(GPIOB, GPIO_PinSource11, GPIO_AF_I2C2); // SDA pini
+
+	I2C_InitStruct.I2C_ClockSpeed = 100000;    //i2c hizi normal modda
+	I2C_InitStruct.I2C_Mode = I2C_Mode_I2C;
+	I2C_InitStruct.I2C_DutyCycle = I2C_DutyCycle_16_9 ;
+	I2C_InitStruct.I2C_OwnAddress1 = 0x00;
+	I2C_InitStruct.I2C_Ack = I2C_Ack_Enable;
+	I2C_InitStruct.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
+	I2C_Init(I2C2, &I2C_InitStruct);
+
+	I2C_Cmd(I2C2, ENABLE);
+}
+
+
+void I2C2_EV_IRQHandler(){
+	uint8_t I2C_write(uint8_t devAddr, uint8_t regAddr, uint8_t val);
+	uint8_t I2C_readreg(uint8_t devAddr, uint8_t regAddr);
+
+}
+
+uint8_t I2C_write(uint8_t devAddr, uint8_t regAddr, uint8_t val)
+{
+        while (I2C_GetFlagStatus(I2C2, I2C_FLAG_BUSY ));
+
+        I2C_GenerateSTART(I2C2, ENABLE);
+
+        while (!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_MODE_SELECT ));
+
+        I2C_Send7bitAddress(I2C2, devAddr, I2C_Direction_Transmitter );
+
+        while (!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED ));
+
+        I2C_SendData(I2C2, regAddr);
+
+        while (!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_BYTE_TRANSMITTING ));
+
+        I2C_SendData(I2C2, val);
+
+        while (!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_BYTE_TRANSMITTING ));
+
+        I2C_GenerateSTOP(I2C2, ENABLE);
+}
+
+uint8_t I2C_readreg(uint8_t devAddr, uint8_t regAddr)
+{
+        uint8_t reg;
+        while (I2C_GetFlagStatus(I2C2, I2C_FLAG_BUSY ));
+
+        I2C_GenerateSTART(I2C2, ENABLE);
+
+        while (!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_MODE_SELECT ));
+
+        I2C_Send7bitAddress(I2C2, devAddr, I2C_Direction_Transmitter );
+
+        while (!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED ));
+
+        I2C_SendData(I2C2, regAddr);
+
+        while (I2C_GetFlagStatus(I2C2, I2C_FLAG_BTF ) == RESET);
+
+        I2C_GenerateSTOP(I2C2, ENABLE);
+
+        I2C_GenerateSTART(I2C2, ENABLE);
+
+        while (!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_MODE_SELECT ));
+
+        I2C_Send7bitAddress(I2C2, devAddr, I2C_Direction_Receiver );
+
+        while (I2C_GetFlagStatus(I2C2, I2C_FLAG_ADDR ) == RESET);
+
+	I2C_AcknowledgeConfig(I2C2, DISABLE);
+
+	while (!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_BYTE_RECEIVED ));
+
+	reg = I2C_ReceiveData(I2C2);
+
+        I2C_GenerateSTOP(I2C2, ENABLE);
+
+        return reg;
+}
+
+
+sensor()
+{
+	// Power On Kurulumlari, Sensör Datasheet Sayfa 26
+	I2C_write(HMC5983_WRITE, 0x00, 0x70); // 8-average, 15 Hz default, normal measurement, Sensör Datasheet sayfa 26
+	I2C_write(HMC5983_WRITE, 0x01, 0xA0); // Gain=5, Sensör Datasheet sayfa 26
+	I2C_write(HMC5983_WRITE, 0x02, 0x00); //Continuous-measurement mode, Sensör Datasheet sayfa 26
+}
+
+*/
+
+
+
+
+
+
+
+
+adc(){
+
+	// 4 Channel ADC
+
+	ADC_InitTypeDef       ADC_InitStruct;
+
+    ADC_CommonInitTypeDef ADC_CommonInitStruct;
+
+    DMA_InitTypeDef       DMA_InitStruct;
+
+    /* Enable ADC3, DMA2 and GPIO clocks ****************************************/
+
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA2 | RCC_AHB1Periph_GPIOA, ENABLE);
+
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC3, ENABLE);//ADC3 is connected to the APB2 peripheral bus
+
+    /* DMA2 Stream0 channel0 configuration **************************************/
+
+    DMA_InitStruct.DMA_Channel = DMA_Channel_2;
+
+    DMA_InitStruct.DMA_PeripheralBaseAddr = (uint32_t)&ADC3->DR;//ADC3's data register
+
+    DMA_InitStruct.DMA_Memory0BaseAddr = (uint32_t)&ADC3ConvertedValue;
+    DMA_InitStruct.DMA_DIR = DMA_DIR_PeripheralToMemory;
+    DMA_InitStruct.DMA_BufferSize = 3;
+    DMA_InitStruct.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    DMA_InitStruct.DMA_MemoryInc = DMA_MemoryInc_Enable;
+    DMA_InitStruct.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;//Reads 16 bit values
+
+    DMA_InitStruct.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;//Stores 16 bit values
+    DMA_InitStruct.DMA_Mode = DMA_Mode_Circular;
+    DMA_InitStruct.DMA_Priority = DMA_Priority_High;
+    DMA_InitStruct.DMA_FIFOMode = DMA_FIFOMode_Disable;
+    DMA_InitStruct.DMA_FIFOThreshold = DMA_FIFOThreshold_HalfFull;
+    DMA_InitStruct.DMA_MemoryBurst = DMA_MemoryBurst_Single;
+    DMA_InitStruct.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
+    DMA_Init(DMA2_Stream0, &DMA_InitStruct);
+    DMA_Cmd(DMA2_Stream0, ENABLE);
+
+    /* Configure GPIO pins ******************************************************/
+
+
+
+    //ADC GPIO
+
+
+
+     GPIO_InitStruct.GPIO_Pin = GPIO_Pin_0 |GPIO_Pin_1 | GPIO_Pin_2;// PA1, PA2
+     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AN;//The pins are configured in analog mode
+     GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL ;//We don't need any pull up or pull down
+     GPIO_Init(GPIOA, &GPIO_InitStruct);//Initialize GPIOC pins with the configuration
+
+
+
+     /* ADC Common Init **********************************************************/
+
+    ADC_CommonInitStruct.ADC_Mode = ADC_Mode_Independent;
+    ADC_CommonInitStruct.ADC_Prescaler = ADC_Prescaler_Div2;
+    ADC_CommonInitStruct.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;
+    ADC_CommonInitStruct.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
+    ADC_CommonInit(&ADC_CommonInitStruct);
+
+    /* ADC3 Init ****************************************************************/
+
+    ADC_DeInit();
+    ADC_InitStruct.ADC_Resolution = ADC_Resolution_12b;//Input voltage is converted into a 12bit int (max 4095)
+    ADC_InitStruct.ADC_ScanConvMode = ENABLE;//The scan is configured in multiple channels
+    ADC_InitStruct.ADC_ContinuousConvMode = ENABLE;//Continuous conversion: input signal is sampled more than once
+    ADC_InitStruct.ADC_ExternalTrigConv = 0;
+    ADC_InitStruct.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_None;
+    ADC_InitStruct.ADC_DataAlign = ADC_DataAlign_Right;//Data converted will be shifted to right
+    ADC_InitStruct.ADC_NbrOfConversion = 3;
+    ADC_Init(ADC3, &ADC_InitStruct);//Initialize ADC with the configuration
+
+    /* Select the channels to be read from **************************************/
+
+    ADC_RegularChannelConfig(ADC3, ADC_Channel_0, 1, ADC_SampleTime_480Cycles);//PA0
+    ADC_RegularChannelConfig(ADC3, ADC_Channel_1, 2, ADC_SampleTime_480Cycles);//PA1
+    ADC_RegularChannelConfig(ADC3, ADC_Channel_2, 3, ADC_SampleTime_480Cycles);//PA2
+
+
+
+
+    /* Enable DMA request after last transfer (Single-ADC mode) */
+
+    ADC_DMARequestAfterLastTransferCmd(ADC3, ENABLE);
+
+    /* Enable ADC3 DMA */
+
+    ADC_DMACmd(ADC3, ENABLE);
+
+    /* Enable ADC3 */
+
+    ADC_Cmd(ADC3, ENABLE);
+
+    /* Start ADC3 Software Conversion */
+
+    //LED for SONAR Channel 0-3
+
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+
+   	/* Configure PD12, PD13, PD14 and PD15 in output pushpull mode */
+
+   		     GPIO_InitStruct.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 ;
+
+   		     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_OUT;
+   		     GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
+   		     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
+   		     GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL;
+   		     GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+
+}
+
+encoderRightInit() {
+
+RCC_AHB1PeriphClockCmd (RCC_AHB1Periph_GPIOA, ENABLE);
+RCC_AHB1PeriphClockCmd (RCC_AHB1Periph_GPIOB, ENABLE);
+
+
+GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+GPIO_InitStruct.GPIO_Pin = GPIO_Pin_15;
+GPIO_Init (GPIOA, &GPIO_InitStruct);
+GPIO_InitStruct.GPIO_Pin = GPIO_Pin_3;
+GPIO_Init (GPIOB, &GPIO_InitStruct);
+
+GPIO_PinAFConfig (GPIOA, GPIO_PinSource15, GPIO_AF_TIM2);
+GPIO_PinAFConfig (GPIOB, GPIO_PinSource3, GPIO_AF_TIM2);
+
+
+
+// Timer peripheral clock enable
+RCC_APB1PeriphClockCmd (RCC_APB1Periph_TIM2, ENABLE);
+
+
+
+
+TIM_BaseStruct.TIM_Prescaler = 0;
+TIM_BaseStruct.TIM_ClockDivision = 0;
+TIM_BaseStruct.TIM_CounterMode = TIM_CounterMode_Up;
+// 48 counts per revolution of the motor shaft & gear ratio 47:1
+TIM_BaseStruct.TIM_Period = 1632;
+// Initialize TIM3
+TIM_TimeBaseInit(TIM2, &TIM_BaseStruct);
+
+
+
+
+
+TIM_EncoderInterfaceConfig (TIM2, TIM_EncoderMode_TI12, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);
+TIM_SetAutoreload (TIM2, 0xffffffff);
+TIM_Cmd (TIM2, ENABLE);
+
+}
+
+encoderLeftInit() {
+
+RCC_AHB1PeriphClockCmd (RCC_AHB1Periph_GPIOE, ENABLE);
+
+
+
+GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+GPIO_InitStruct.GPIO_Pin = GPIO_Pin_9 | GPIO_Pin_11;
+GPIO_Init (GPIOE, &GPIO_InitStruct);
+
+
+GPIO_PinAFConfig (GPIOE, GPIO_PinSource11, GPIO_AF_TIM1);
+GPIO_PinAFConfig (GPIOE, GPIO_PinSource9, GPIO_AF_TIM1);
+
+
+
+// Timer peripheral clock enable
+RCC_APB2PeriphClockCmd (RCC_APB2Periph_TIM1, ENABLE);
+
+
+
+
+TIM_BaseStruct.TIM_Prescaler = 0;
+TIM_BaseStruct.TIM_ClockDivision = 0;
+TIM_BaseStruct.TIM_CounterMode = TIM_CounterMode_Up;
+// 48 counts per revolution of the motor shaft & gear ratio 47:1
+TIM_BaseStruct.TIM_Period = 1632;
+// Initialize TIM3
+TIM_TimeBaseInit(TIM1, &TIM_BaseStruct);
+
+
+
+
+
+TIM_EncoderInterfaceConfig (TIM1, TIM_EncoderMode_TI2, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);
+TIM_SetAutoreload (TIM1,0x660);
+TIM_Cmd (TIM1, ENABLE);
+
+}
+
+Speaker(){
+									RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM12, ENABLE);
+									RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
+
+									TIM_BaseStruct.TIM_Period = 81500;//1kHz
+
+									TIM_BaseStruct.TIM_Prescaler = 0;
+
+									TIM_BaseStruct.TIM_ClockDivision = 0;
+
+									TIM_BaseStruct.TIM_CounterMode = TIM_CounterMode_Up;
+
+									TIM_TimeBaseInit(TIM12, &TIM_BaseStruct);
+
+								     //Start count on TIM4
+
+								    TIM_Cmd(TIM12, ENABLE);
+
+								    TIM_OCStruct.TIM_OCMode = TIM_OCMode_PWM1;
+
+								    TIM_OCStruct.TIM_OutputState = TIM_OutputState_Enable;
+
+								    TIM_OCStruct.TIM_OCPolarity = TIM_OCPolarity_High;
+
+
+								    GPIO_InitStruct.GPIO_Pin= GPIO_Pin_14;
+
+									GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+
+									GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
+
+									GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
+
+									GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+
+									GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+									GPIO_PinAFConfig(GPIOB,GPIO_PinSource14,GPIO_AF_TIM12);
+
+									TIM_OCStruct.TIM_Pulse = 0;  //25% duty cycle
+
+									TIM_OC1Init(TIM12, &TIM_OCStruct);
+
+									TIM_OC1PreloadConfig(TIM12, TIM_OCPreload_Enable);
+}
+
